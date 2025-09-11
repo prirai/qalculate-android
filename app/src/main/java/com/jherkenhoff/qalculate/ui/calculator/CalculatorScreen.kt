@@ -112,35 +112,34 @@ fun CalculatorScreenContent(
     var autocompleteDismissed by remember { mutableStateOf(false) }
 
     var showInfo by remember { mutableStateOf(false) }
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
-        topBar = {
-            TopAppBar(
-                colors = topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    titleContentColor = MaterialTheme.colorScheme.primary,
-                ),
-                title = {
-                    Text(
-                        text = "Qalculate!",
-                        style = MaterialTheme.typography.headlineLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.fillMaxWidth(),
-                        maxLines = 1
-                    )
-                },
-                actions = {
-                    IconButton(onClick = { showInfo = true }) {
-                        Icon(
-                            imageVector = Icons.Filled.Info,
-                            contentDescription = "About"
-                        )
-                    }
-                }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .imePadding()
+            .background(MaterialTheme.colorScheme.surface)
+    ) {
+        // Backdrop behind status bar
+        // Only behind status bar (24.dp is typical status bar height)
+        androidx.compose.foundation.layout.Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(24.dp)
+                .background(MaterialTheme.colorScheme.primaryContainer)
+                .align(Alignment.TopStart)
+        ) {}
+
+        // Info button at absolute top right, overlapping the backdrop
+        IconButton(
+            onClick = { showInfo = true },
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 0.dp, end = 8.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Info,
+                contentDescription = "About"
             )
-        },
-        modifier = Modifier.imePadding(),
-    ) { innerPadding ->
+        }
         if (showInfo) {
             androidx.compose.ui.window.Dialog(onDismissRequest = { showInfo = false }) {
                 com.jherkenhoff.qalculate.ui.AboutCard()
@@ -148,21 +147,20 @@ fun CalculatorScreenContent(
         }
         Column(
             modifier = Modifier
-                .padding(innerPadding)
-                .padding(horizontal = 8.dp)
                 .fillMaxSize()
+                .padding(top = 0.dp, start = 8.dp, end = 8.dp, bottom = 0.dp)
         ) {
             androidx.compose.material3.Card(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .padding(vertical = 8.dp),
+                    .padding(top = 16.dp, bottom = 8.dp),
                 shape = MaterialTheme.shapes.large,
                 colors = androidx.compose.material3.CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant
                 ),
                 elevation = androidx.compose.material3.CardDefaults.cardElevation(2.dp)
-                    ) {
+            ) {
                 CalculationList(
                     calculationHistory = calculationHistory,
                     currentParsed = parsedString,

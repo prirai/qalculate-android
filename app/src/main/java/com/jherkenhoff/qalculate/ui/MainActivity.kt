@@ -20,6 +20,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
+    // Hide the status bar for fullscreen experience (modern way)
+    val controller = androidx.core.view.WindowInsetsControllerCompat(window, window.decorView)
+    controller.hide(androidx.core.view.WindowInsetsCompat.Type.statusBars())
+    controller.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+
         setContent {
             QalculateApp()
         }
