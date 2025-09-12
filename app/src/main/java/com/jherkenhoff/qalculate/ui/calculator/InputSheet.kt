@@ -162,7 +162,10 @@ fun InputSheet(
                         Text(
                             text = stringResource(R.string.textfield_hint),
                             style = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.outline),
-                            modifier = Modifier.padding(start = 8.dp)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(44.dp)
+                                .padding(vertical = 10.dp, horizontal = 12.dp)
                         )
                     }
                 }

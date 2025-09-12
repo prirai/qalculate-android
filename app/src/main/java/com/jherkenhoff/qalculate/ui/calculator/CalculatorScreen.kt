@@ -45,12 +45,23 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.windowInsetsBottomHeight
+import androidx.compose.animation.core.tween
+import androidx.compose.runtime.getValue
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.ui.ExperimentalComposeUiApi
 //
 import androidx.compose.ui.platform.InterceptPlatformTextInput
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.jherkenhoff.qalculate.data.model.CalculationHistoryItem
@@ -112,18 +123,24 @@ fun CalculatorScreenContent(
     var autocompleteDismissed by remember { mutableStateOf(false) }
 
     var showInfo by remember { mutableStateOf(false) }
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val imeBottomPx = WindowInsets.ime.getBottom(density)
+    val imeBottomDp = with(density) { imeBottomPx.toDp() }
+    val animatedImePadding by animateDpAsState(
+        targetValue = imeBottomDp,
+        animationSpec = tween(durationMillis = 50)
+    )
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .imePadding()
+            .padding(bottom = animatedImePadding)
             .background(MaterialTheme.colorScheme.surface)
     ) {
-        // Backdrop behind status bar
-        // Only behind status bar (24.dp is typical status bar height)
+
         androidx.compose.foundation.layout.Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(24.dp)
+                .height(48.dp)
                 .background(MaterialTheme.colorScheme.primaryContainer)
                 .align(Alignment.TopStart)
         ) {}
@@ -131,17 +148,38 @@ fun CalculatorScreenContent(
         // Info button at absolute top right, overlapping the backdrop
         IconButton(
             onClick = { showInfo = true },
+            colors = androidx.compose.material3.IconButtonDefaults.iconButtonColors(
+                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+            ),
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(top = 0.dp, end = 8.dp)
+                .padding(top = 54.dp, end = 8.dp)
+                .zIndex(2f)
         ) {
             Icon(
                 imageVector = Icons.Filled.Info,
                 contentDescription = "About"
             )
         }
+        // Track keyboard state
+        val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+        val inputFocusRequester = remember { FocusRequester() }
+        val lastFocusState = remember { mutableStateOf(false) }
+        var wasInputFocused by remember { mutableStateOf(false) }
         if (showInfo) {
-            androidx.compose.ui.window.Dialog(onDismissRequest = { showInfo = false }) {
+            // Save input focus state when opening dialog
+            LaunchedEffect(Unit) {
+                wasInputFocused = lastFocusState.value
+            }
+            androidx.compose.ui.window.Dialog(onDismissRequest = {
+                showInfo = false
+                // Restore focus to input if it was focused before dialog
+                if (wasInputFocused) {
+                    inputFocusRequester.requestFocus()
+                    keyboardController?.show()
+                }
+            }) {
                 com.jherkenhoff.qalculate.ui.AboutCard()
             }
         }
@@ -154,7 +192,7 @@ fun CalculatorScreenContent(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .padding(top = 16.dp, bottom = 8.dp),
+                    .padding(top = 54.dp, bottom = 8.dp),
                 shape = MaterialTheme.shapes.large,
                 colors = androidx.compose.material3.CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant
@@ -182,8 +220,6 @@ fun CalculatorScreenContent(
                         nextHandler.startInputMethod(request)
                     },
                 ) {
-                    val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
-                    val lastFocusState = remember { mutableStateOf(false) }
                     val placeholdeVisible = input().text.isEmpty()
                     InputSheet(
                         textFieldValue = input,
@@ -192,10 +228,10 @@ fun CalculatorScreenContent(
                         onValueChange = onInputChanged,
                         onSubmit = { onCalculationSubmit() },
                         onClearAll = onACKeyPressed,
-                        focusRequester = focusRequester,
+                        focusRequester = inputFocusRequester,
                         lastFocusState = lastFocusState,
                         placeholdeVisible = placeholdeVisible,
-                        modifier = Modifier.padding(8.dp)
+                        modifier = Modifier.padding(0.dp)
                     )
                 }
             }
