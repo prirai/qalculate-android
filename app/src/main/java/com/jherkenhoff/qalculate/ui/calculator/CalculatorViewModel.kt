@@ -1,5 +1,10 @@
 package com.jherkenhoff.qalculate.ui.calculator
 
+import com.jherkenhoff.qalculate.data.CurrencyConversionHelper
+import com.jherkenhoff.qalculate.data.CurrencyDatabase
+import com.jherkenhoff.qalculate.data.CurrencyRateRepository
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -15,6 +20,7 @@ import com.jherkenhoff.libqalculate.IntervalDisplay
 import com.jherkenhoff.libqalculate.PrintOptions
 import com.jherkenhoff.libqalculate.libqalculateConstants.TAG_TYPE_HTML
 import com.jherkenhoff.qalculate.data.AutocompleteRepository
+import com.jherkenhoff.qalculate.data.CurrencyAutocompleteProvider
 import com.jherkenhoff.qalculate.data.CalculationHistoryRepository
 import com.jherkenhoff.qalculate.data.PersistentCalculationHistoryRepository
 import com.jherkenhoff.qalculate.data.ScreenSettingsRepository
@@ -36,23 +42,32 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import java.time.LocalDateTime
 import javax.inject.Inject
+import dagger.hilt.android.qualifiers.ApplicationContext
 
 data class CalculatorUiState (
     val autocompleteList: List<AutocompleteItem> = emptyList(),
 )
+
 
 @HiltViewModel
 class CalculatorViewModel @Inject constructor(
     private val calculator: Calculator,
     private val parseUseCase: ParseUseCase,
     private val calculateUseCase: CalculateUseCase,
-    application: android.app.Application,
     private val screenSettingsRepository: ScreenSettingsRepository,
     private val autocompleteRepository: AutocompleteRepository,
-    private val themeSettingsRepository: ThemeSettingsRepository
+    private val themeSettingsRepository: ThemeSettingsRepository,
+    @ApplicationContext private val applicationContext: android.content.Context
 ) : ViewModel() {
 
-    private val calculationHistoryRepository = PersistentCalculationHistoryRepository(application.applicationContext)
+    // Currency autocomplete provider
+    private val currencyAutocompleteProvider = CurrencyAutocompleteProvider(applicationContext)
+
+    private val calculationHistoryRepository = PersistentCalculationHistoryRepository(applicationContext)
+
+    // Currency DB/repository for rates
+    private val currencyDb by lazy { CurrencyDatabase.getInstance(applicationContext) }
+    private val currencyRateRepo by lazy { CurrencyRateRepository(currencyDb.currencyRateDao(), applicationContext) }
 
     val darkThemeFlow = themeSettingsRepository.isDarkTheme.stateIn(
         viewModelScope,
@@ -157,11 +172,29 @@ class CalculatorViewModel @Inject constructor(
 
             val relevantText = match.value
 
+            // Get normal autocomplete suggestions
             val autocompleteList = autocompleteRepository.getAutocompleteSuggestions(relevantText)
+
+            // Get currency suggestions
+
+            val currencySuggestions = currencyAutocompleteProvider.suggest(relevantText)
+                .map { (code, name) ->
+                    AutocompleteItem(
+                        type = com.jherkenhoff.qalculate.model.AutocompleteType.CURRENCY,
+                        name = code,
+                        title = name,
+                        abbreviations = listOf(code),
+                        description = name,
+                        typeBeforeCursor = code + " ",
+                        typeAfterCursor = ""
+                    )
+                }
+
+            val mergedList = (autocompleteList + currencySuggestions).distinctBy { it.name }
 
             _uiState.update { currentState ->
                 currentState.copy(
-                    autocompleteList = autocompleteList
+                    autocompleteList = mergedList
                 )
             }
         }
@@ -240,6 +273,37 @@ class CalculatorViewModel @Inject constructor(
         calculateJob = viewModelScope.launch {
             delay(100)
 
+            val input = inputTextFieldValue.text.trim()
+            // Regex: e.g. 1 usd to inr
+            val currencyPattern = Regex("(\\d+(?:\\.\\d+)?)\\s+([a-zA-Z]{2,10})\\s+to\\s+([a-zA-Z]{2,10})", RegexOption.IGNORE_CASE)
+            val match = currencyPattern.matchEntire(input)
+            if (match != null) {
+                val amount = match.groupValues[1].toDoubleOrNull()
+                val from = match.groupValues[2].lowercase()
+                val to = match.groupValues[3].lowercase()
+                if (amount != null) {
+                    // Get rates JSON (suspend)
+                    val ratesJson = currencyRateRepo.getRatesForToday()
+                    if (ratesJson != null) {
+                        val result = CurrencyConversionHelper.convert(amount, from, to, ratesJson)
+                        if (result != null) {
+                            parsedString = "$amount $from = $result $to"
+                            resultString = result.toString()
+                            return@launch
+                        } else {
+                            parsedString = "Conversion not available"
+                            resultString = "-"
+                            return@launch
+                        }
+                    } else {
+                        parsedString = "Rates unavailable"
+                        resultString = "-"
+                        return@launch
+                    }
+                }
+            }
+
+            // Fallback to normal calculation
             parsedString = parseUseCase(inputTextFieldValue.text)
 
             val calculatedMathStructure = calculateUseCase(inputTextFieldValue.text)

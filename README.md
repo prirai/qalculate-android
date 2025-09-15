@@ -32,6 +32,7 @@ Features added by this fork:
 * History persistence
 * Pure material UI
 * Calculate-as-you-type mode
+* Currency conversion featuring national as well as cryptocurrencies
 
 Features from libqalculate:
 
